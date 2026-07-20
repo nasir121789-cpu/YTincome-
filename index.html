@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="bn" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Watch & Earn App</title>
+    
+    <!-- Telegram WebApp SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        ytDark: '#0f0f0f',
+                        ytCard: '#1f1f1f',
+                        ytRed: '#ff0000'
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        * { -webkit-tap-highlight-color: transparent; user-select: none; }
+        body { background-color: #0f0f0f; color: #f1f1f1; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .yt-shield { position: absolute; top: 0; left: 0; width: 100%; height: 40px; z-index: 10; background: transparent; }
+    </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden antialiased">
+
+    <!-- Top Header Bar (Instant View) -->
+    <header id="top-bar" class="bg-ytDark/95 backdrop-blur-md px-4 py-3 flex justify-between items-center z-40 border-b border-white/5 flex-shrink-0">
+        <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-full bg-ytRed flex items-center justify-center text-white font-bold text-sm">
+                <i class="fa-solid fa-play"></i>
+            </div>
+            <span class="font-extrabold text-lg tracking-tight text-white">WatchPro</span>
+        </div>
+        
+        <div class="flex items-center gap-3">
+            <div class="bg-white/10 px-3 py-1 rounded-full flex items-center gap-1.5 border border-white/10">
+                <i class="fa-solid fa-coins text-amber-400 text-xs"></i>
+                <span id="user-balance-header" class="text-xs font-bold text-amber-400">0.00 BDT</span>
+            </div>
+            <div id="user-avatar" class="w-8 h-8 rounded-full bg-sky-600 flex items-center justify-center font-bold text-xs text-white">
+                U
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN APP SCREEN WRAPPER -->
+    <div id="app-viewport" class="flex-1 relative overflow-hidden">
+
+        <!-- 1. HOME FEED SCREEN (সরাসরি লোড হবে) -->
+        <div id="view-home" class="h-full overflow-y-auto no-scrollbar pb-20">
+            <div class="px-4 py-3 sticky top-0 bg-ytDark/90 backdrop-blur z-20">
+                <div class="relative flex items-center">
+                    <input type="text" id="search-input" placeholder="ইউটিউব ভিডিও সার্চ করুন..." class="w-full bg-white/10 border border-white/10 rounded-full pl-10 pr-4 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-ytRed">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 text-slate-400 text-xs"></i>
+                    <button onclick="searchVideos()" class="absolute right-2 bg-ytRed text-white px-3 py-1 rounded-full text-[11px] font-medium">খুঁজুন</button>
+                </div>
+            </div>
+
+            <div id="video-feed-container" class="space-y-6 pt-1">
+                <!-- Fallback Feed Items -->
+                <div class="px-4 py-6 text-center text-xs text-slate-500">ভিডিও ফেচ করা হচ্ছে...</div>
+            </div>
+        </div>
+
+        <!-- 2. IN-APP VIDEO PLAYER DETAIL SCREEN -->
+        <div id="view-watch-detail" class="absolute inset-0 bg-ytDark z-50 transform translate-y-full transition-transform duration-300 flex flex-col h-full overflow-hidden">
+            <div class="px-4 py-2 bg-ytDark flex items-center gap-3 border-b border-white/10 flex-shrink-0">
+                <button onclick="closeVideoDetail()" class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white active:scale-95 transition">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+                <h3 class="text-xs font-semibold text-white line-clamp-1">ভিডিও প্লেয়ার</h3>
+            </div>
+
+            <div class="relative aspect-video w-full bg-black flex-shrink-0">
+                <div class="yt-shield"></div>
+                <iframe id="main-player-iframe" class="w-full h-full border-0" src="" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+            </div>
+
+            <div class="flex-1 overflow-y-auto no-scrollbar p-4 space-y-4">
+                <div>
+                    <h2 id="playing-video-title" class="text-sm font-bold text-white leading-snug">ভিডিও লোড হচ্ছে...</h2>
+                    <div class="flex items-center justify-between mt-2 text-xs text-slate-400 border-b border-white/10 pb-3">
+                        <span id="playing-channel-title">Channel Name</span>
+                        <span class="bg-emerald-500/10 text-emerald-400 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-emerald-500/20">+১ ভিউ অর্জিত</span>
+                    </div>
+                </div>
+
+                <div class="space-y-3 pt-2">
+                    <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider">পরবর্তী ভিডিওসমূহ</h4>
+                    <div id="recommended-videos-list" class="space-y-4"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. REFERRALS SCREEN -->
+        <div id="view-referrals" class="hidden h-full overflow-y-auto no-scrollbar p-4 space-y-4 pb-20">
+            <div class="bg-ytCard p-5 rounded-2xl text-center space-y-3 border border-white/5">
+                <div class="w-12 h-12 bg-ytRed/10 text-ytRed rounded-full flex items-center justify-center mx-auto text-xl">
+                    <i class="fa-solid fa-users"></i>
+                </div>
+                <h2 class="text-base font-bold text-white">রেফারেল প্রোগ্রাম</h2>
+                <p class="text-xs text-slate-400">বন্ধুদের ইনভাইট করুন এবং মাইলস্টোন টাস্ক পূরণ করে কমিশন বাড়ান।</p>
+
+                <div class="bg-ytDark p-3 rounded-xl flex items-center justify-between gap-2 border border-white/10">
+                    <input type="text" id="ref-link" readonly value="Loading link..." class="bg-transparent text-xs w-full text-slate-300 focus:outline-none">
+                    <button onclick="copyRefLink()" class="bg-ytRed text-white px-3 py-1.5 rounded-lg text-xs font-bold active:scale-95 transition">কপি</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div class="bg-ytCard p-4 rounded-xl text-center border border-white/5">
+                    <p class="text-[11px] text-slate-400">মোট রেফারেল</p>
+                    <p id="ref-count" class="text-xl font-black text-white mt-1">0</p>
+                </div>
+                <div class="bg-ytCard p-4 rounded-xl text-center border border-white/5">
+                    <p class="text-[11px] text-slate-400">বর্তমান কমিশন রেট</p>
+                    <p id="ref-rate" class="text-xl font-black text-emerald-400 mt-1">10%</p>
+                </div>
+            </div>
+
+            <div class="space-y-3 pt-2">
+                <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <i class="fa-solid fa-list-check text-ytRed"></i> রেফারেল মাইলস্টোন টাস্ক
+                </h3>
+                <div id="task-milestones-list" class="space-y-3"></div>
+            </div>
+        </div>
+
+        <!-- 4. PROFILE & WITHDRAW SCREEN -->
+        <div id="view-profile" class="hidden h-full overflow-y-auto no-scrollbar p-4 space-y-4 pb-20">
+            <div class="bg-ytCard p-5 rounded-2xl text-center space-y-1 border border-white/5">
+                <p class="text-xs text-slate-400">মোট দেখা ভিডিও</p>
+                <h2 id="profile-total-views" class="text-3xl font-black text-ytRed">0</h2>
+                <p id="profile-converted-balance" class="text-xs font-semibold text-emerald-400">সমপরিমাণ: 0.00 BDT</p>
+            </div>
+
+            <div class="bg-ytCard p-5 rounded-2xl space-y-3 border border-white/5">
+                <h3 class="text-xs font-bold text-white flex items-center gap-2 uppercase tracking-wider">
+                    <i class="fa-solid fa-wallet text-emerald-400"></i> টাকা উইথড্র করুন
+                </h3>
+                <div>
+                    <label class="text-[10px] text-slate-400">বিকাশ / নগদ নম্বর</label>
+                    <input type="text" id="payment-details" placeholder="017XXXXXXXX" class="w-full bg-ytDark border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 mt-1">
+                </div>
+                <div>
+                    <label class="text-[10px] text-slate-400">টাকার পরিমাণ (BDT)</label>
+                    <input type="number" id="withdraw-amount" placeholder="সর্বনিম্ন ৫০ টাকা" class="w-full bg-ytDark border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 mt-1">
+                </div>
+                <button onclick="submitWithdrawal()" class="w-full bg-emerald-600 hover:bg-emerald-500 py-2.5 rounded-xl font-bold text-xs text-white shadow-lg shadow-emerald-900/30 active:scale-95 transition">উইথড্র সাবমিট</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Bottom Navigation Bar -->
+    <nav class="bg-ytDark border-t border-white/10 flex justify-around py-2.5 z-40 flex-shrink-0">
+        <button onclick="switchTab('home')" id="tab-home" class="flex flex-col items-center gap-1 text-ytRed text-[10px] font-medium">
+            <i class="fa-solid fa-house text-base"></i><span>হোম</span>
+        </button>
+        <button onclick="switchTab('referrals')" id="tab-referrals" class="flex flex-col items-center gap-1 text-slate-400 text-[10px] font-medium">
+            <i class="fa-solid fa-user-group text-base"></i><span>রেফার</span>
+        </button>
+        <button onclick="switchTab('profile')" id="tab-profile" class="flex flex-col items-center gap-1 text-slate-400 text-[10px] font-medium">
+            <i class="fa-solid fa-user text-base"></i><span>প্রোফাইল</span>
+        </button>
+    </nav>
+
+    <!-- APP ENGINE LOGIC -->
+    <script>
+        // 1. FIREBASE CONFIG
+        const firebaseConfig = {
+  apiKey: "AIzaSyCbDqsxGX-QgjLE1hOQpDa5amaLTz6tfaQ",
+  authDomain: "income-3e118.firebaseapp.com",
+  databaseURL: "https://income-3e118-default-rtdb.firebaseio.com",
+  projectId: "income-3e118",
+  storageBucket: "income-3e118.firebasestorage.app",
+  messagingSenderId: "146998510735",
+  appId: "1:146998510735:web:216f0824c100394bb0dcfa"
+};
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        const YOUTUBE_API_KEY = "AIzaSyDVt9000RSEQbFVavueFUJEdhZSmP6xWWQ";
+
+        // 2. TELEGRAM WEBAPP INIT
+        const tg = window.Telegram?.WebApp;
+        if (tg) { tg.expand(); tg.ready(); }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        
+        // Telegram User Detection (No login screen)
+        const userUID = tg?.initDataUnsafe?.user?.id ? String(tg.initDataUnsafe.user.id) : (urlParams.get('uid') || "demo_user_101");
+        const userName = tg?.initDataUnsafe?.user?.first_name || "User";
+
+        // Telegram Deep Link Start Parameter Detection (e.g., ref_123456)
+        const rawStartParam = tg?.initDataUnsafe?.start_param || urlParams.get('startapp') || urlParams.get('ref');
+        let referrerUID = null;
+        if (rawStartParam) {
+            referrerUID = rawStartParam.replace('ref_', '').trim();
+        }
+
+        let viewToCurrencyRate = 0.1;
+        let maxRecommendedCount = 5;
+        let currentLoadedVideos = [];
+        let adLink = "";
+        let adEnabled = false;
+
+        let referralTiers = [
+            { req: 10, commission: 15 },
+            { req: 20, commission: 20 },
+            { req: 50, commission: 30 },
+            { req: 100, commission: 50 }
+        ];
+
+        // INSTANT STARTUP (NO OVERLAY LOADING)
+        document.addEventListener("DOMContentLoaded", () => {
+            initUserAutoRegistration();
+            loadSystemConfig();
+            searchVideos();
+        });
+
+        function switchTab(tab) {
+            ['home', 'referrals', 'profile'].forEach(t => {
+                document.getElementById(`view-${t}`).classList.add('hidden');
+                document.getElementById(`tab-${t}`).classList.remove('text-ytRed');
+                document.getElementById(`tab-${t}`).classList.add('text-slate-400');
+            });
+            document.getElementById(`view-${tab}`).classList.remove('hidden');
+            document.getElementById(`tab-${tab}`).classList.remove('text-slate-400');
+            document.getElementById(`tab-${tab}`).classList.add('text-ytRed');
+        }
+
+        // AUTO SIGNUP & SEAMLESS LOGIN ENGINE
+        function initUserAutoRegistration() {
+            document.getElementById('user-avatar').innerText = userName[0].toUpperCase();
+            
+            // Set Telegram Direct Mini App Link Format
+            // BotFather-এ আপনার বটের সংক্ষিপ্ত লিংক এর সাথে নাম ম্যাচ করে কাজ করবে
+            const botUsername = "YourBotUsername"; // আপনার টেলিগ্রাম বটের ইউজারনেম দিন (উদা: EarnProBot)
+            const appShortName = "app"; // আপনার মিনি অ্যাপের শর্ট নেম
+            document.getElementById('ref-link').value = `https://t.me/${botUsername}/${appShortName}?startapp=ref_${userUID}`;
+
+            const userRef = db.ref(`users/${userUID}`);
+            
+            userRef.once('value').then(snapshot => {
+                if (!snapshot.exists()) {
+                    //১. নতুন ইউজার হলে অটোমেটিক ডাটাবেজে একাউন্ট খুলে যাবে
+                    const validReferrer = (referrerUID && referrerUID !== userUID) ? referrerUID : null;
+
+                    userRef.set({
+                        username: userName,
+                        total_views: 0,
+                        referral_count: 0,
+                        referred_by: validReferrer,
+                        created_at: firebase.database.ServerValue.TIMESTAMP
+                    }).then(() => {
+                        // ২. যদি রেফারাল লিংক থেকে আসে, তাহলে রেফারারের রেফার সংখ্যা ১ বাড়াবে
+                        if (validReferrer) {
+                            db.ref(`users/${validReferrer}/referral_count`).transaction(currentCount => {
+                                return (currentCount || 0) + 1;
+                            });
+                        }
+                    });
+                }
+            });
+
+            // রিয়েলটাইম ইউজার ডাটা লিসেনার
+            userRef.on('value', (snapshot) => {
+                let userData = snapshot.val() || {};
+                
+                const totalViews = userData.total_views || 0;
+                const refCount = userData.referral_count || 0;
+                const balanceBDT = (totalViews * viewToCurrencyRate).toFixed(2);
+                const currentCommissionRate = calculateCurrentCommission(refCount);
+
+                document.getElementById('user-balance-header').innerText = `${balanceBDT} BDT`;
+                document.getElementById('profile-total-views').innerText = totalViews;
+                document.getElementById('profile-converted-balance').innerText = `সমপরিমাণ: ${balanceBDT} BDT`;
+                document.getElementById('ref-count').innerText = refCount;
+                document.getElementById('ref-rate').innerText = `${currentCommissionRate}%`;
+
+                renderMilestoneTasks(refCount);
+            });
+        }
+
+        function loadSystemConfig() {
+            db.ref('system_config').on('value', (snapshot) => {
+                const config = snapshot.val();
+                if (config) {
+                    if (config.views_to_currency_rate) viewToCurrencyRate = config.views_to_currency_rate;
+                    if (config.search_results_limit) maxRecommendedCount = config.search_results_limit;
+                    if (config.tiers) {
+                        referralTiers = Object.values(config.tiers).sort((a, b) => a.req - b.req);
+                    }
+                    adLink = config.ad_link || "";
+                    adEnabled = config.ad_enabled === true;
+                }
+            });
+        }
+
+        function calculateCurrentCommission(refCount) {
+            let activeRate = 10;
+            for (let i = 0; i < referralTiers.length; i++) {
+                if (refCount >= referralTiers[i].req) {
+                    activeRate = referralTiers[i].commission;
+                }
+            }
+            return activeRate;
+        }
+
+        function renderMilestoneTasks(refCount) {
+            const taskContainer = document.getElementById('task-milestones-list');
+            taskContainer.innerHTML = '';
+
+            referralTiers.forEach((tier, index) => {
+                const isCompleted = refCount >= tier.req;
+                const progressPct = Math.min(100, Math.round((refCount / tier.req) * 100));
+
+                const card = document.createElement('div');
+                card.className = `bg-ytCard p-4 rounded-xl border ${isCompleted ? 'border-emerald-500/30' : 'border-white/5'} space-y-2 relative overflow-hidden`;
+
+                card.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 h-7 rounded-full ${isCompleted ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-slate-400'} flex items-center justify-center text-xs font-bold">
+                                ${isCompleted ? '<i class="fa-solid fa-check"></i>' : index + 1}
+                            </div>
+                            <div>
+                                <h4 class="text-xs font-bold text-white">${tier.req} টি সফল রেফার</h4>
+                                <p class="text-[10px] text-slate-400">${tier.commission}% কমিশন উপহার</p>
+                            </div>
+                        </div>
+                        <span class="text-[10px] font-bold ${isCompleted ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full' : 'text-slate-400 bg-white/5 px-2 py-0.5 rounded-full'}">
+                            ${isCompleted ? 'সম্পূর্ণ' : `${refCount}/${tier.req}`}
+                        </span>
+                    </div>
+                    <div class="w-full bg-ytDark rounded-full h-1.5 overflow-hidden border border-white/5">
+                        <div class="h-full ${isCompleted ? 'bg-emerald-500' : 'bg-ytRed'} transition-all duration-300" style="width: ${progressPct}%"></div>
+                    </div>
+                `;
+
+                taskContainer.appendChild(card);
+            });
+        }
+
+        async function searchVideos() {
+            const query = document.getElementById('search-input').value || 'trending bangla';
+            const feedContainer = document.getElementById('video-feed-container');
+
+            try {
+                const response = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=15&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}`);
+                const data = await response.json();
+
+                feedContainer.innerHTML = '';
+                if (data.items && data.items.length > 0) {
+                    currentLoadedVideos = data.items;
+                    
+                    data.items.forEach(v => {
+                        const videoId = v.id.videoId;
+                        const title = v.snippet.title;
+                        const channel = v.snippet.channelTitle;
+                        const thumbnail = v.snippet.thumbnails.high.url;
+
+                        const card = document.createElement('div');
+                        card.className = "cursor-pointer active:opacity-90 transition";
+                        card.onclick = () => openVideoDetail(videoId, title, channel);
+                        
+                        card.innerHTML = `
+                            <div class="relative aspect-video w-full bg-ytCard overflow-hidden">
+                                <img src="${thumbnail}" class="w-full h-full object-cover">
+                                <span class="absolute bottom-2 right-2 bg-black/80 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">HD</span>
+                            </div>
+                            <div class="flex gap-3 px-3 pt-3">
+                                <div class="w-9 h-9 rounded-full bg-white/10 flex-shrink-0 flex items-center justify-center font-bold text-xs text-ytRed">
+                                    <i class="fa-solid fa-circle-play"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <h3 class="text-xs font-semibold text-white line-clamp-2 leading-tight">${title}</h3>
+                                    <p class="text-[11px] text-slate-400 mt-1">${channel} • HD Watch</p>
+                                </div>
+                            </div>
+                        `;
+                        feedContainer.appendChild(card);
+                    });
+                } else {
+                    feedContainer.innerHTML = `<p class="text-center text-xs text-slate-500 py-10">কোনো ভিডিও পাওয়া যায়নি</p>`;
+                }
+            } catch (err) {
+                feedContainer.innerHTML = `<p class="text-center text-xs text-rose-400 py-10">ভিডিও লোড করা যায়নি</p>`;
+            }
+        }
+
+        function openVideoDetail(videoId, title, channel) {
+            if (adEnabled && adLink && adLink.trim() !== "") {
+                try { window.open(adLink, '_blank'); } catch(e) {}
+            }
+
+            const iframe = document.getElementById('main-player-iframe');
+            iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&rel=0`;
+
+            document.getElementById('playing-video-title').innerText = title;
+            document.getElementById('playing-channel-title').innerText = channel;
+
+            renderRecommendedVideos(videoId);
+
+            const detailScreen = document.getElementById('view-watch-detail');
+            detailScreen.classList.remove('translate-y-full');
+
+            // Anti-Cheat View Registration
+            const watchedRef = db.ref(`user_watched_videos/${userUID}/${videoId}`);
+            watchedRef.once('value').then(snapshot => {
+                if (!snapshot.exists()) {
+                    watchedRef.set(true);
+                    
+                    // ১. ভিডিও ওয়াচারের ভিউ পয়েন্ট ১ বাড়ানো
+                    db.ref(`users/${userUID}/total_views`).transaction((currentViews) => {
+                        return (currentViews || 0) + 1;
+                    });
+
+                    // ২. ২-টু-১ নিয়ম: ডাউনলাইন ২টি ভিডিও দেখলে রেফারার পাবে ১টি বোনাস ভিউ
+                    db.ref(`users/${userUID}`).once('value').then(uSnap => {
+                        const uData = uSnap.val();
+                        if (uData && uData.referred_by && (uData.total_views + 1) % 2 === 0) {
+                            db.ref(`users/${uData.referred_by}/total_views`).transaction(refViews => (refViews || 0) + 1);
+                        }
+                    });
+
+                    if (tg) tg.showAlert("ভিডিওটি দেখার জন্য +১ ভিউ যোগ করা হয়েছে!");
+                }
+            });
+        }
+
+        function closeVideoDetail() {
+            const detailScreen = document.getElementById('view-watch-detail');
+            detailScreen.classList.add('translate-y-full');
+            document.getElementById('main-player-iframe').src = "";
+        }
+
+        function renderRecommendedVideos(currentVideoId) {
+            const container = document.getElementById('recommended-videos-list');
+            container.innerHTML = '';
+
+            const filtered = currentLoadedVideos
+                .filter(v => v.id.videoId !== currentVideoId)
+                .slice(0, maxRecommendedCount);
+
+            filtered.forEach(v => {
+                const item = document.createElement('div');
+                item.className = "flex gap-3 items-center bg-ytCard p-2 rounded-xl cursor-pointer active:scale-98 transition border border-white/5";
+                item.onclick = () => openVideoDetail(v.id.videoId, v.snippet.title, v.snippet.channelTitle);
+                
+                item.innerHTML = `
+                    <div class="relative w-28 aspect-video bg-ytDark rounded-lg overflow-hidden flex-shrink-0">
+                        <img src="${v.snippet.thumbnails.medium.url}" class="w-full h-full object-cover">
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h4 class="text-[11px] font-semibold text-white line-clamp-2 leading-tight">${v.snippet.title}</h4>
+                        <p class="text-[10px] text-slate-400 mt-1">${v.snippet.channelTitle}</p>
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        function copyRefLink() {
+            const linkInput = document.getElementById('ref-link');
+            linkInput.select();
+            document.execCommand('copy');
+            if (tg) tg.showAlert("রেফারেল লিংক কপি করা হয়েছে!");
+        }
+
+        function submitWithdrawal() {
+            const amount = parseFloat(document.getElementById('withdraw-amount').value);
+            const paymentDetails = document.getElementById('payment-details').value;
+
+            if (!amount || amount < 50) {
+                if (tg) tg.showAlert("সর্বনিম্ন ৫০ টাকা উইথড্র করা যাবে।");
+                return;
+            }
+            if (!paymentDetails) {
+                if (tg) tg.showAlert("অনুগ্রহ করে বিকাশ/নগদ নম্বর দিন।");
+                return;
+            }
+
+            db.ref(`users/${userUID}`).once('value', (snapshot) => {
+                const userData = snapshot.val();
+                const currentBalance = (userData.total_views || 0) * viewToCurrencyRate;
+
+                if (currentBalance < amount) {
+                    if (tg) tg.showAlert("পর্যাপ্ত ব্যালেন্স নেই।");
+                    return;
+                }
+
+                const viewsToDeduct = Math.floor(amount / viewToCurrencyRate);
+                const newViews = Math.max(0, (userData.total_views || 0) - viewsToDeduct);
+
+                const ticketRef = db.ref('withdrawals').push();
+                ticketRef.set({
+                    uid: userUID,
+                    username: userName,
+                    amount: amount,
+                    payment_details: paymentDetails,
+                    status: "pending",
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
+                }).then(() => {
+                    db.ref(`users/${userUID}/total_views`).set(newViews);
+                    document.getElementById('withdraw-amount').value = '';
+                    document.getElementById('payment-details').value = '';
+                    if (tg) tg.showAlert("উইথড্রয়াল রিকোয়েস্ট জমা হয়েছে!");
+                });
+            });
+        }
+    </script>
+</body>
+</html>
